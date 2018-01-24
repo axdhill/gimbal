@@ -18,8 +18,8 @@ class Px4Gimbal:
         print(self._ser2.name)
         self._ser1.flush()
         self._ser2.flush()
-        self._ser1.write(b"C32H1024c;")
-        self._ser2.write(b"C32H1024c;")
+        self._ser1.write(b"C32H512c;")
+        self._ser2.write(b"C32H512c;")
         self._data = None
         self._msg_type_list = ['ATTITUDE']
         # Create serial device
@@ -53,65 +53,56 @@ class Px4Gimbal:
     # Wait for Mavlink messages and send them on when they are received
     def start(self):
         first_time = True
-        beta = 0.5
+        beta = 0.3
         first_time = True
         yaw_avg_v = 0
         pitch_avg_v = 0
-
-        xpos = 1
-        ypos = 1
+        xpos = 0.0
+        ypos = 0.0
+        loop_no = 0
 
         while(True) :
             msg = None
             while msg is None:
-                msg = self._mavserial.recv_match(type='HIGHRES_IMU')
-                # self._lock.acquire()
-                # self._data = msg
-                # self._lock.release()
-            # print(msg)
+                msg = self._mavserial.recv_match(type='ATTITUDE')
 
-    # def gimbal(self) :
-    #     beta = 0.5
-    #     first_time = True
-    #     roll_v_avg = 0
-    #     pitch_v_avg = 0
-
-    #     while(True) :
-    #         self._lock.acquire()
-    #         msg = self._data
-    #         self._lock.release()
-            # if(msg == None) : 
-            #     continue
             if first_time :
-                # r0 = msg.roll
-                # p0 = msg.pitch
-                # y0 = msg.yaw
-                x_0 =  msg.zgyro
-                y_0 = msg.ygyro
+                r0 = msg.roll
+                p0 = msg.pitch
+                y0 = msg.yaw
+
                 first_time = False
                 continue
-            # roll = msg.roll - r0
-            # pitch = msg.pitch - p0
-            # yaw = msg.yaw - y0
-            kX = 1000.0
-            kY = -1500.0
+            roll = msg.roll - r0
+            pitch = msg.pitch - p0
+            yaw = msg.yaw - y0
+
+            x_v = msg.yawspeed
+            y_v = msg.pitchspeed
+
+            kX = 120000.0
+            kY = -150000.0
+
+            kVX = 0
+            kVY = -0
 
 
-            # roll_v = msg.rollspeed
-            # pitch_v = msg.pitchspeed
-            # yaw_v = msg.yawspeed
-            x_v =  msg.zgyro - x_0
-            y_v = msg.ygyro - y_0
+            loop_no += 1
+            errorX = int(kX*(yaw - xpos) + kVX*x_v)
+            errorY = int(kY*(pitch - ypos)+ kVY*y_v)
+            if (loop_no % 100 == 0) :
+                print("------")
+                print("y,p %f, %f" % (yaw,pitch))
+                print("x,y %f, %f" % (xpos, ypos))
+                print("%i, %i" % (errorX, errorY))
 
-            # yaw_avg_v = beta*yaw_v + (1-beta)*yaw_avg_v
-            # pitch_avg_v = beta*pitch_v+ (1-beta)*pitch_avg_v
+            # if(abs(errorX) < 2) :
+            #     errorX = 0 
 
+            # if(abs(errorY) < 2) :
+            #     errorY = 0 
             
-            errorX = int(kX*x_v)
-            errorY = int(kY*y_v)
-            print("%i, %i" % (errorX, errorY))
-
-
+            
             if(errorX > 0) :
                 errXstr = "+"+str(errorX)
             else :
@@ -120,7 +111,7 @@ class Px4Gimbal:
                 errYstr = "+"+str(errorY)
             else :
                 errYstr = str(errorY)
-
+            # print(errXstr)
             if(errorX != 0) :
                 self._ser1.write(errXstr+";")
             if(errorY != 0) :
@@ -130,8 +121,7 @@ class Px4Gimbal:
             # r0 = msg.roll
             # p0 = msg.pitch
             # y0 = msg.yaw
+            xpos += errorX/kX
+            ypos += errorY/kY
 
-            # xpos -= errorX
-            # ypos -= errorY
-
-            # time.sleep(0.5)
+            # time.sleep(0.1)
